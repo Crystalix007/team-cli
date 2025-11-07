@@ -34,8 +34,27 @@ func main() {
 		RunE:  listAccountsCmdRun,
 	}
 
+	requestCmd := &cobra.Command{
+		Use:   "request",
+		Short: "Request elevated access",
+		Long: `Request temporary elevated access to a AWS account.
+
+Exclude flags to perform interactive selection.`,
+		Args: cobra.ExactArgs(0),
+		RunE: requestCmdRun,
+	}
+
+	requestCmd.Flags().StringP("account", "a", "", "AWS account ID or name")
+	requestCmd.Flags().StringP("role", "r", "", "AWS role ID or name")
+	requestCmd.Flags().StringP("start", "s", "", "Start date and time")
+	requestCmd.Flags().IntP("duration", "d", 0, "Duration of elevation")
+	requestCmd.Flags().StringP("ticket", "t", "", "Ticket ID")
+	requestCmd.Flags().StringP("reason", "j", "", "Justification reason")
+	requestCmd.Flags().BoolP("confirm", "y", false, "Automatically confirm")
+
 	rootCmd.AddCommand(configureCmd)
 	rootCmd.AddCommand(listAccountsCmd)
+	rootCmd.AddCommand(requestCmd)
 	rootCmd.SilenceUsage = true
 
 	if err := rootCmd.Execute(); err != nil {

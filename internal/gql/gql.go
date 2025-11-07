@@ -42,6 +42,7 @@ type PayloadExtensions struct {
 
 type wsError struct {
 	ErrorType string `json:"errorType"`
+	Message   string `json:"message"`
 }
 
 type Request struct {

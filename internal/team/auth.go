@@ -72,7 +72,7 @@ func FetchToken(ctx context.Context, cfg *RemoteConfig) (*AuthToken, error) {
 
 			code := params.Get("code")
 			if code != "" {
-				slog.Info("Got code from challenge", "code", code)
+				slog.Debug("Got code from challenge", "code", code)
 
 				select {
 				case codeChan <- code:
