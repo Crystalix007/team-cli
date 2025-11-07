@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/csnewman/team-cli/internal/team"
 )
+
+var ErrInvalidConfig = errors.New("invalid config")
 
 type Config struct {
 	ServerConfig *team.RemoteConfig `json:"server_config"`
@@ -70,4 +75,57 @@ func writeConfig(cfg *Config) error {
 	}
 
 	return nil
+}
+
+func readConfigReAuth(ctx context.Context) (*Config, error) {
+	cfg, err := readConfig()
+	if err != nil {
+		return nil, fmt.Errorf("could not read config: %w", err)
+	}
+
+	if cfg.ServerConfig == nil || cfg.ServerConfig.OAuthDomain == "" {
+		slog.Error("No server config found!")
+
+		return nil, ErrInvalidConfig
+	}
+
+	if cfg.AuthToken != nil && time.Now().Add(time.Minute*5).Before(cfg.AuthToken.ExpiresAt) {
+		slog.Info("Existing auth token is valid")
+
+		return cfg, nil
+	}
+
+	if cfg.AuthToken != nil && cfg.AuthToken.RefreshToken != "" {
+		slog.Info("Existing auth token has expired, attempting to refresh")
+
+		newToken, err := team.RefreshToken(ctx, cfg.ServerConfig, cfg.AuthToken)
+		if err == nil {
+			slog.Info("Refreshed token")
+
+			cfg.AuthToken = newToken
+
+			if err := writeConfig(cfg); err != nil {
+				return nil, fmt.Errorf("failed to write new token: %w", err)
+			}
+
+			return cfg, nil
+		}
+
+		slog.Warn("Failed to refresh token", "err", err)
+	}
+
+	slog.Info("Reauthentication required")
+
+	newToken, err := team.FetchToken(ctx, cfg.ServerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch new token: %w", err)
+	}
+
+	cfg.AuthToken = newToken
+
+	if err := writeConfig(cfg); err != nil {
+		return nil, fmt.Errorf("failed to write new token: %w", err)
+	}
+
+	return cfg, nil
 }

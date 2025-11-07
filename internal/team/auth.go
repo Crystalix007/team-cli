@@ -26,6 +26,32 @@ type AuthToken struct {
 	TokenType    string    `json:"token_type"`
 }
 
+type IDToken struct {
+	UserID   string `json:"userId"`
+	GroupIDs string `json:"groupIds"`
+}
+
+func (t *AuthToken) ParseIDToken() (*IDToken, error) {
+	parts := strings.Split(t.IdToken, ".")
+
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("%w: invalid format", ErrUnexpected)
+	}
+
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode: %w", err)
+	}
+
+	var out *IDToken
+
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal: %w", err)
+	}
+
+	return out, nil
+}
+
 type rawAuthToken struct {
 	IdToken      string `json:"id_token"`
 	AccessToken  string `json:"access_token"`
@@ -36,8 +62,6 @@ type rawAuthToken struct {
 
 func FetchToken(ctx context.Context, cfg *RemoteConfig) (*AuthToken, error) {
 	slog.Info("Fetching authentication token")
-
-	now := time.Now()
 
 	codeChan := make(chan string, 1)
 
@@ -129,9 +153,6 @@ You can close this window now.
 		return nil, errors.New("timeout waiting for challenge")
 	}
 
-	ctx, cancelTimeout := context.WithTimeout(ctx, time.Second*30)
-	defer cancelTimeout()
-
 	u = url.URL{
 		Scheme: "https",
 		Host:   cfg.OAuthDomain,
@@ -144,6 +165,30 @@ You can close this window now.
 	data.Set("client_id", cfg.UserPoolClientID)
 	data.Set("redirect_uri", localhostRedir)
 	data.Set("code_verifier", pkceKey)
+
+	return fetchToken(ctx, u, data)
+}
+
+func RefreshToken(ctx context.Context, remote *RemoteConfig, old *AuthToken) (*AuthToken, error) {
+	u := url.URL{
+		Scheme: "https",
+		Host:   remote.OAuthDomain,
+		Path:   "/oauth2/token",
+	}
+
+	data := make(url.Values)
+	data.Set("grant_type", "refresh_token")
+	data.Set("client_id", remote.UserPoolClientID)
+	data.Set("refresh_token", old.RefreshToken)
+
+	return fetchToken(ctx, u, data)
+}
+
+func fetchToken(ctx context.Context, u url.URL, data url.Values) (*AuthToken, error) {
+	now := time.Now()
+
+	ctx, cancelTimeout := context.WithTimeout(ctx, time.Second*30)
+	defer cancelTimeout()
 
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader(data.Encode()))
 	if err != nil {
@@ -159,13 +204,13 @@ You can close this window now.
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: unexpected token status code: %d", ErrUnexpected, resp.StatusCode)
-	}
-
 	rawEnc, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read token body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: unexpected token status code: %d %q", ErrUnexpected, resp.StatusCode, string(rawEnc))
 	}
 
 	var token *rawAuthToken
@@ -178,7 +223,7 @@ You can close this window now.
 		IdToken:      token.IdToken,
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
-		ExpiresAt:    now.Add(time.Duration(token.ExpiresIn) * time.Millisecond),
+		ExpiresAt:    now.Add(time.Duration(token.ExpiresIn) * time.Second),
 		TokenType:    token.TokenType,
 	}, nil
 }

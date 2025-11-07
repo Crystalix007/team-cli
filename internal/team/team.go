@@ -26,6 +26,7 @@ var configExtractors = map[string]*regexp.Regexp{
 }
 
 type RemoteConfig struct {
+	Server            string   `json:"server"`
 	GraphQLEndpoint   string   `json:"graphql_endpoint"`
 	UserPoolClientID  string   `json:"user_pool_client_id"`
 	OAuthDomain       string   `json:"oauth_domain"`
@@ -150,6 +151,7 @@ func ExtractConfig(ctx context.Context, addr string) (*RemoteConfig, error) {
 	}
 
 	return &RemoteConfig{
+		Server:            server.String(),
 		GraphQLEndpoint:   raw["aws_appsync_graphqlEndpoint"],
 		UserPoolClientID:  raw["aws_user_pools_web_client_id"],
 		OAuthDomain:       raw["oauth_domain"],
