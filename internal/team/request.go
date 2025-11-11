@@ -11,7 +11,7 @@ import (
 	"github.com/csnewman/team-cli/internal/gql"
 )
 
-var TicketRegex = regexp.MustCompile("^[a-zA-Z0-9]+$")
+var TicketRegex = regexp.MustCompile("^[a-zA-Z0-9_-]+$")
 
 const createRequest = `mutation CreateRequests(
     $input: CreateRequestsInput!
