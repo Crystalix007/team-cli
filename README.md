@@ -117,7 +117,9 @@ Optionally, you can enable "Device code" support. This allows you to use team-cl
 
 3. Trigger a redeployment of TEAM and wait for it to complete (including executing `./deploy.sh` to apply the new rule).
 
-4. Test device code auth: `team-cli configure team.your-company.com --device-code` 
+4. Add `https://{your team hostname}/device_code/` to the list of allowed callback URLs.
+
+5. Test device code auth: `team-cli configure team.your-company.com --device-code` 
    ![device-code.png](.github/device-code.png)
 
-5. Paste the code into the team-cli prompt.
+6. Paste the code into the team-cli prompt.
