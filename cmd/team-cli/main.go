@@ -26,6 +26,9 @@ func main() {
 		RunE:  configureCmdRun,
 	}
 
+	configureCmd.Flags().BoolP("no-browser", "b", false, "Do not open the browser automatically")
+	configureCmd.Flags().BoolP("device-code", "d", false, "Use the device code flow. Implies --no-browser")
+
 	listAccountsCmd := &cobra.Command{
 		Use:   "list-accounts",
 		Short: "List all accounts",

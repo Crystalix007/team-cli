@@ -16,8 +16,10 @@ import (
 var ErrInvalidConfig = errors.New("invalid config")
 
 type Config struct {
-	ServerConfig *team.RemoteConfig `json:"server_config"`
-	AuthToken    *team.AuthToken    `json:"auth_token"`
+	ServerConfig  *team.RemoteConfig `json:"server_config"`
+	AuthToken     *team.AuthToken    `json:"auth_token"`
+	UseDeviceCode bool               `json:"use_device_code"`
+	NoBrowser     bool               `json:"no_browser"`
 }
 
 func configPath() (string, error) {
@@ -116,7 +118,16 @@ func readConfigReAuth(ctx context.Context) (*Config, error) {
 
 	slog.Info("Reauthentication required")
 
-	newToken, err := team.FetchToken(ctx, cfg.ServerConfig)
+	var newToken *team.AuthToken
+
+	if cfg.UseDeviceCode {
+		newToken, err = team.FetchTokenViaDeviceCode(ctx, cfg.ServerConfig, func(_ context.Context) (string, error) {
+			return promptString("Device code? ")
+		})
+	} else {
+		newToken, err = team.FetchToken(ctx, cfg.ServerConfig, cfg.NoBrowser)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch new token: %w", err)
 	}

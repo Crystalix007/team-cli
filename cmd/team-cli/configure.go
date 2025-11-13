@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -9,6 +10,16 @@ import (
 )
 
 func configureCmdRun(cmd *cobra.Command, args []string) error {
+	useDeviceCode, err := cmd.Flags().GetBool("device-code")
+	if err != nil {
+		return fmt.Errorf("device-code flag: %w", err)
+	}
+
+	noBrowser, err := cmd.Flags().GetBool("no-browser")
+	if err != nil {
+		return fmt.Errorf("no-browser flag: %w", err)
+	}
+
 	remoteCfg, err := team.ExtractConfig(cmd.Context(), args[0])
 	if err != nil {
 		return err
@@ -16,7 +27,16 @@ func configureCmdRun(cmd *cobra.Command, args []string) error {
 
 	slog.Info("Extracted remote configuration", "cfg", remoteCfg)
 
-	token, err := team.FetchToken(cmd.Context(), remoteCfg)
+	var token *team.AuthToken
+
+	if useDeviceCode {
+		token, err = team.FetchTokenViaDeviceCode(cmd.Context(), remoteCfg, func(_ context.Context) (string, error) {
+			return promptString("Device code? ")
+		})
+	} else {
+		token, err = team.FetchToken(cmd.Context(), remoteCfg, noBrowser)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -28,6 +48,8 @@ func configureCmdRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read existing config: %w", err)
 	}
 
+	existingCfg.UseDeviceCode = useDeviceCode
+	existingCfg.NoBrowser = noBrowser
 	existingCfg.ServerConfig = remoteCfg
 	existingCfg.AuthToken = token
 

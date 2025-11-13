@@ -23,6 +23,7 @@ var configExtractors = map[string]*regexp.Regexp{
 	"oauth_domain":                 regexp.MustCompile(`\Woauth\W*:.{0,999}.{0,999}.{0,999}.{0,999}\Wdomain\W*:\W*"([\w:/._-]+)"`),
 	"oauth_responseType":           regexp.MustCompile(`\Woauth\W*:.{0,999}.{0,999}.{0,999}.{0,999}\WresponseType\W*:\W*"([\w:/._-]+)"`),
 	"oauth_scope":                  regexp.MustCompile(`\Woauth\W*:.{0,999}.{0,999}.{0,999}.{0,999}\Wscope\W*:\W*\[(\W*(?:"[\w:/._-]+"\W*,?\W*)+)]`),
+	"redirectSignIn":               regexp.MustCompile(`\WredirectSignIn\W*:\W*"([\w:/._-]+)"`),
 }
 
 type RemoteConfig struct {
@@ -32,6 +33,7 @@ type RemoteConfig struct {
 	OAuthDomain       string   `json:"oauth_domain"`
 	OAuthResponseType string   `json:"oauth_response_type"`
 	OAuthScopes       []string `json:"oauth_scopes"`
+	RedirectSignIn    string   `json:"redirectSignIn"`
 }
 
 var ErrUnexpected = errors.New("unexpected error")
@@ -157,5 +159,6 @@ func ExtractConfig(ctx context.Context, addr string) (*RemoteConfig, error) {
 		OAuthDomain:       raw["oauth_domain"],
 		OAuthResponseType: raw["oauth_responseType"],
 		OAuthScopes:       scopes,
+		RedirectSignIn:    raw["redirectSignIn"],
 	}, nil
 }

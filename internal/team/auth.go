@@ -3,6 +3,7 @@ package team
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,9 +13,14 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
+
+//go:embed auth.html
+var closePageSrc string
 
 const localhostRedir = "http://localhost:43672/"
 
@@ -61,7 +67,63 @@ type rawAuthToken struct {
 	TokenType    string `json:"token_type"`
 }
 
-func FetchToken(ctx context.Context, cfg *RemoteConfig) (*AuthToken, error) {
+func FetchTokenViaDeviceCode(
+	ctx context.Context,
+	cfg *RemoteConfig,
+	readCode func(context.Context) (string, error),
+) (*AuthToken, error) {
+	slog.Info("Fetching authentication token")
+
+	state := randomCharacters(32)
+	pkceKey, challenge := generateChallenge()
+
+	redirUri := cfg.RedirectSignIn + "device_code/"
+
+	params := url.Values{
+		"redirect_uri":  {redirUri},
+		"response_type": {cfg.OAuthResponseType},
+		"client_id":     {cfg.UserPoolClientID},
+		"scope":         {strings.Join(cfg.OAuthScopes, " ")},
+		"state":         {state},
+	}
+
+	if cfg.OAuthResponseType == "code" {
+		params.Add("code_challenge", challenge)
+		params.Add("code_challenge_method", "S256")
+	}
+
+	u := url.URL{
+		Scheme:   "https",
+		Host:     cfg.OAuthDomain,
+		Path:     "/oauth2/authorize",
+		RawQuery: params.Encode(),
+	}
+
+	fmt.Println("\nPlease visit the following URL in your browser to authenticate:")
+	fmt.Println(u.String())
+
+	code, err := readCode(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("could not read code: %w", err)
+	}
+
+	u = url.URL{
+		Scheme: "https",
+		Host:   cfg.OAuthDomain,
+		Path:   "/oauth2/token",
+	}
+
+	data := make(url.Values)
+	data.Set("grant_type", "authorization_code")
+	data.Set("code", code)
+	data.Set("client_id", cfg.UserPoolClientID)
+	data.Set("redirect_uri", redirUri)
+	data.Set("code_verifier", pkceKey)
+
+	return fetchToken(ctx, u, data)
+}
+
+func FetchToken(ctx context.Context, cfg *RemoteConfig, noBrowser bool) (*AuthToken, error) {
 	slog.Info("Fetching authentication token")
 
 	codeChan := make(chan string, 1)
@@ -83,20 +145,7 @@ func FetchToken(ctx context.Context, cfg *RemoteConfig) (*AuthToken, error) {
 			}
 
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`<html>
-<head>
-</head>
-<body>
-You can close this window now.
-
-<script>
-  setTimeout(function() {
-      window.close()
-  }, 1000);
-</script>
-</body>
-</html>
-`))
+			_, _ = w.Write([]byte(closePageSrc))
 		}),
 	}
 
@@ -118,8 +167,10 @@ You can close this window now.
 	state := randomCharacters(32)
 	pkceKey, challenge := generateChallenge()
 
+	redirUri := localhostRedir
+
 	params := url.Values{
-		"redirect_uri":  {localhostRedir},
+		"redirect_uri":  {redirUri},
 		"response_type": {cfg.OAuthResponseType},
 		"client_id":     {cfg.UserPoolClientID},
 		"scope":         {strings.Join(cfg.OAuthScopes, " ")},
@@ -140,6 +191,12 @@ You can close this window now.
 
 	fmt.Println("\nPlease visit the following URL in your browser to authenticate:")
 	fmt.Println(u.String())
+
+	if !noBrowser {
+		if err := openBrowser(u.String()); err != nil {
+			slog.Warn("failed to open browser", "err", err)
+		}
+	}
 
 	var code string
 
@@ -164,7 +221,7 @@ You can close this window now.
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", code)
 	data.Set("client_id", cfg.UserPoolClientID)
-	data.Set("redirect_uri", localhostRedir)
+	data.Set("redirect_uri", redirUri)
 	data.Set("code_verifier", pkceKey)
 
 	return fetchToken(ctx, u, data)
@@ -251,4 +308,25 @@ func generateChallenge() (string, string) {
 	encoded := base64.RawURLEncoding.EncodeToString(hash[:])
 
 	return challenge, encoded
+}
+
+func openBrowser(url string) error {
+	var (
+		cmd  string
+		args []string
+	)
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "rundll32"
+		args = []string{"url.dll,FileProtocolHandler", url}
+	case "darwin":
+		cmd = "open"
+		args = []string{url}
+	default:
+		cmd = "xdg-open"
+		args = []string{url}
+	}
+
+	return exec.Command(cmd, args...).Start()
 }
