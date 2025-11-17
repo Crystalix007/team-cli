@@ -101,18 +101,22 @@ func requestCmdRun(cmd *cobra.Command, args []string) error {
 	}
 
 	// Select role
-	var selectedRole *team.Permission
+	var selectedRole *team.Role
+
+	allowedRoles := slices.SortedFunc(maps.Values(selectedAccount.Roles), func(a *team.Role, b *team.Role) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	if role == "" {
 		fmt.Println()
 		fmt.Println("Please select the role:")
-		for i, perm := range selectedAccount.Permissions {
+		for i, r := range allowedRoles {
 			fmt.Printf(
-				"  [%d] name=%q max_duration=%d requires_approval=%v\n",
+				"  [%d] name=%q max_duration_with_approval=%d max_duration_without_approval=%d\n",
 				i+1,
-				perm.Name,
-				perm.MaxDuration,
-				perm.RequiresApproval,
+				r.Name,
+				r.MaxDurApproval,
+				r.MaxDurNoApproval,
 			)
 		}
 
@@ -123,9 +127,9 @@ func requestCmdRun(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("could not select role: %w", err)
 		}
 
-		selectedRole = selectedAccount.Permissions[idx-1]
+		selectedRole = allowedRoles[idx-1]
 	} else {
-		for _, perm := range selectedAccount.Permissions {
+		for _, perm := range allowedRoles {
 			if strings.EqualFold(perm.ID, role) || strings.EqualFold(perm.Name, role) {
 				selectedRole = perm
 
@@ -154,13 +158,13 @@ func requestCmdRun(cmd *cobra.Command, args []string) error {
 
 	if duration == 0 {
 		duration, err = promptSelection(
-			fmt.Sprintf("Duration (1-%d hours)? ", selectedRole.MaxDuration),
-			1, selectedRole.MaxDuration,
+			fmt.Sprintf("Duration (1-%d hours)? ", selectedRole.MaxDurApproval),
+			1, selectedRole.MaxDurApproval,
 		)
 		if err != nil {
 			return fmt.Errorf("could not select duration: %w", err)
 		}
-	} else if duration < 1 || duration > selectedRole.MaxDuration {
+	} else if duration < 1 || duration > selectedRole.MaxDurApproval {
 		return fmt.Errorf("%w: duration must be between 1 and %d", ErrInvalid, duration)
 	}
 
@@ -198,6 +202,9 @@ func requestCmdRun(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("  Start: %q\n", startTime)
 	}
+
+	fmt.Printf("  Duration: %v\n", duration)
+	fmt.Printf("  Requires approval: %v\n", duration > selectedRole.MaxDurNoApproval)
 
 	fmt.Printf("  Ticket: %q\n", ticket)
 	fmt.Printf("  Justification: %q\n", reason)

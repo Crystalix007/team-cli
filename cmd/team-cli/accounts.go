@@ -21,22 +21,27 @@ func listAccountsCmdRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not fetch accounts: %w", err)
 	}
 
-	sorted := slices.SortedFunc(maps.Values(accounts), func(a *team.Account, b *team.Account) int {
+	sortedAccs := slices.SortedFunc(maps.Values(accounts), func(a *team.Account, b *team.Account) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 
 	fmt.Println()
 	fmt.Println("Accounts:")
 
-	for i, account := range sorted {
+	for i, account := range sortedAccs {
 		fmt.Printf("  [%d] id=%q name=%q\n", i+1, account.ID, account.Name)
 
-		slices.SortFunc(account.Permissions, func(a, b *team.Permission) int {
+		roles := slices.SortedFunc(maps.Values(account.Roles), func(a *team.Role, b *team.Role) int {
 			return strings.Compare(a.Name, b.Name)
 		})
 
-		for _, permission := range account.Permissions {
-			fmt.Printf("    - role=%q max_duration=%d requires_approval=%v\n", permission.Name, permission.MaxDuration, permission.RequiresApproval)
+		for _, role := range roles {
+			fmt.Printf(
+				"    - role=%q max_duration_with_approval=%d max_duration_without_approval=%d\n",
+				role.Name,
+				role.MaxDurApproval,
+				role.MaxDurNoApproval,
+			)
 		}
 	}
 
