@@ -1,19 +1,36 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"runtime/debug"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/semver"
 )
+
+var Version = "(unknown version)"
+
+func init() {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		Version = info.Main.Version
+	}
+}
 
 func main() {
 	rootCmd := &cobra.Command{
 		Use:               "team-cli",
 		Short:             "AWS TEAM CLI interface",
-		Long:              `team-cli is a CLI wrapper for accessing AWS TEAM`,
+		Long:              "Team-CLI - " + Version + "\n\nteam-cli is a CLI wrapper for accessing AWS TEAM.",
+		Version:           Version,
 		PersistentPreRunE: rootCmdPersistentPre,
 	}
 
@@ -98,13 +115,60 @@ func rootCmdPersistentPre(cmd *cobra.Command, _ []string) error {
 		ReplaceAttr: nil,
 	})))
 
-	version := "Unknown version"
+	fmt.Println("Team-CLI - " + Version)
 
-	if info, ok := debug.ReadBuildInfo(); ok {
-		version = info.Main.Version
+	if strings.HasPrefix(Version, "v") {
+		latestVersion, err := getLatestVersion(cmd.Context())
+		if err != nil {
+			slog.Warn("Failed to check for updates", "err", err)
+		} else if !strings.HasPrefix(latestVersion, "v") {
+			slog.Warn("Failed to check for updates", "version", latestVersion, "err", "unknown format")
+		} else if semver.Compare(latestVersion, Version) > 0 {
+			fmt.Println()
+			fmt.Println("---- Update available! ----")
+			fmt.Println("A new release is available. Please install with: go install github.com/csnewman/team-cli/cmd/team-cli@" + latestVersion)
+		}
 	}
 
-	fmt.Println("Team-CLI - " + version)
-
 	return nil
+}
+
+const latestURL = "https://api.github.com/repos/csnewman/team-cli/releases/latest"
+
+var ErrUnexpected = errors.New("unexpected error")
+
+func getLatestVersion(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("could not create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("could not send request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%w: could not fetch: %v", ErrUnexpected, resp.Status)
+	}
+
+	defer resp.Body.Close()
+
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("could not read response body: %w", err)
+	}
+
+	var versionBlob struct {
+		TagName string `json:"tag_name"`
+	}
+
+	if err := json.Unmarshal(rawBody, &versionBlob); err != nil {
+		return "", fmt.Errorf("could not unmarshal response body: %w", err)
+	}
+
+	return versionBlob.TagName, nil
 }
