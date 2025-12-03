@@ -115,7 +115,7 @@ func rootCmdPersistentPre(cmd *cobra.Command, _ []string) error {
 		ReplaceAttr: nil,
 	})))
 
-	fmt.Println("Team-CLI - " + Version)
+	fmt.Println("# Team-CLI - " + Version)
 
 	if strings.HasPrefix(Version, "v") {
 		latestVersion, err := getLatestVersion(cmd.Context())
