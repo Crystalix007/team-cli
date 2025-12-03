@@ -117,7 +117,10 @@ func rootCmdPersistentPre(cmd *cobra.Command, _ []string) error {
 
 	fmt.Println("# Team-CLI - " + Version)
 
-	if strings.HasPrefix(Version, "v") {
+	call := strings.Fields(cmd.UseLine())
+	isCompletion := len(call) >= 3 && call[1] == "completion"
+
+	if !isCompletion && strings.HasPrefix(Version, "v") {
 		latestVersion, err := getLatestVersion(cmd.Context())
 		if err != nil {
 			slog.Warn("Failed to check for updates", "err", err)
